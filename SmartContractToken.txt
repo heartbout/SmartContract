@@ -335,11 +335,11 @@ contract MintableToken is BurnableToken, Ownable {
     return true;
   }
 }
-contract PaladinEnToken is MintableToken {
+contract HeartBoutEnToken is MintableToken {
 	string public name;
 	string public symbol;
 	uint8 public decimals;
-	function PaladinEnToken(string _name, string _symbol, uint8 _decimals) public {
+	function HeartBoutEnToken(string _name, string _symbol, uint8 _decimals) public {
 		require(!stringEqual(_name, ""));
 		require(!stringEqual(_symbol, ""));
 		require(_decimals > 0);

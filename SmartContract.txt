@@ -125,12 +125,12 @@ contract Ownable {
     return super.hasEnded() || capReached;
   }
 }
-contract PaladinPreICO is CappedCrowdsale, Ownable {
+contract HeartBoutPreICO is CappedCrowdsale, Ownable {
     using SafeMath for uint256;
     
     // The token address
     address public token;
-    function PaladinPreICO(uint256 _startTime, uint256 _endTime, uint256 _rate, address _wallet, uint256 _cap) public
+    function HeartBoutPreICO(uint256 _startTime, uint256 _endTime, uint256 _rate, address _wallet, uint256 _cap) public
     CappedCrowdsale(_startTime, _endTime, _rate, _wallet, _cap)
     {
         token = 0x00b5f21445bc492d74a68c1e0e33239845484c6f8b;
