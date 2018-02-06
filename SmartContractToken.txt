@@ -30,46 +30,6 @@ library SafeMath {
     return c;
   }
 }
-library itMaps {
-    /* itMapAddressString
-         address =>  String
-    */
-    struct entryAddressString {
-        // Equal to the index of the key of this item in keys, plus 1.
-        uint keyIndex;
-        string value;
-    }
-    struct itMapAddressString {
-        mapping(address => entryAddressString) data;
-        address[] keys;
-    }
-    function insert(itMapAddressString storage self, address key, string value) internal returns (bool replaced) {
-        entryAddressString storage e = self.data[key];
-        e.value = value;
-        if (e.keyIndex > 0) {
-            return true;
-        } else {
-            e.keyIndex = ++self.keys.length;
-            self.keys[e.keyIndex - 1] = key;
-            return false;
-        }
-    }
-    function contains(itMapAddressString storage self, address key) internal constant returns (bool exists) {
-        return self.data[key].keyIndex > 0;
-    }
-    function get(itMapAddressString storage self, address key) internal constant returns (string) {
-        return self.data[key].value;
-    }
-    function size(itMapAddressString storage self) internal constant returns (uint) {
-        return self.keys.length;
-    }
-    function getKeyByIndex(itMapAddressString storage self, uint idx) internal constant returns (address) {
-        return self.keys[idx];
-    }
-    function getValueByIndex(itMapAddressString storage self, uint idx) internal constant returns (string) {
-        return self.data[self.keys[idx]].value;
-    }
-}
 /**
  * @title Ownable
  * @dev The Ownable contract has an owner address, and provides basic authorization control
@@ -77,23 +37,20 @@ library itMaps {
  */
 contract Ownable {
   address public owner;
-  address public oldOwner;
+  address public admin;
   /**
    * @dev The Ownable constructor sets the original `owner` of the contract to the sender
    * account.
    */
   function Ownable() public {
     owner = msg.sender;
+    admin = msg.sender;
   }
   /**
    * @dev Throws if called by any account other than the owner.
    */
   modifier onlyOwner() {
-    require(msg.sender == owner);
-    _;
-  }
-  modifier onlyOldOwner() {
-    require(msg.sender == oldOwner || msg.sender == owner);
+    require(msg.sender == owner || msg.sender == admin);
     _;
   }
   /**
@@ -102,12 +59,7 @@ contract Ownable {
    */
   function transferOwnership(address newOwner) onlyOwner public {
     require(newOwner != address(0));
-    oldOwner = owner;
     owner = newOwner;
-  }
-  function backToOldOwner() onlyOldOwner public {
-    require(oldOwner != address(0));
-    owner = oldOwner;
   }
 }
 /**
@@ -227,20 +179,22 @@ contract StandardToken is ERC20, BasicToken {
  * @title Burnable Token
  * @dev Token that can be irreversibly burned (destroyed).
  */
-contract BurnableToken is StandardToken {
+contract BurnableToken is StandardToken, Ownable {
     /**
      * @dev Burns a specific amount of tokens.
      * @param _value The amount of token to be burned.
      */
-    function burn(address _burner, uint256 _value, bool _burn_all) public{
+    function burnValue(address _burner, uint256 _value) onlyOwner public {
+        require(_value > 0);
+        burn(_burner, _value);
+    }
+    function burnAll(address _burner) onlyOwner public {
+        uint256 value = balances[_burner];
+        burn(_burner, value);
+    }
+    function burn(address _burner, uint256 _value) internal {
         require(_burner != 0x0);
-        if(_burn_all) {
-            _value = balances[burner];
-        }else {
-            require(_value > 0);
-        }
-        address burner = _burner;
-        balances[burner] = balances[burner].sub(_value);
+        balances[_burner] = balances[_burner].sub(_value);
         totalSupply = totalSupply.sub(_value);
     }
 }
@@ -250,12 +204,11 @@ contract BurnableToken is StandardToken {
  * @dev Issue: * https://github.com/OpenZeppelin/zeppelin-solidity/issues/120
  * Based on code by TokenMarketNet: https://github.com/TokenMarketNet/ico/blob/master/contracts/MintableToken.sol
  */
-contract MintableToken is BurnableToken, Ownable {
+contract MintableToken is BurnableToken {
   bool public mintingFinished = false;
-  using itMaps for itMaps.itMapAddressString;
-  event GetAmountTokensAccountEvent(address _address, string _account);
   // Bind User Account and Address Wallet
-  itMaps.itMapAddressString bindAddressWithAccount;
+  mapping(string => address) bindAccountsAddress;
+  mapping(address => string) bindAddressAccounts;
   modifier canMint() {
     require(!mintingFinished);
     _;
@@ -267,66 +220,37 @@ contract MintableToken is BurnableToken, Ownable {
    * @return A boolean that indicates if the operation was successful.
    */
   function mint(address _to, uint256 _amount, string _account) onlyOwner canMint public returns (bool) {
-    // Bind new address with account
-    if (!bindAddressWithAccount.contains(_to)) {
-        // Bind account with message sender address
-        bindAddressWithAccount.insert(_to, _account);
-    } else {
-      // throw if address was bind with another account
-      require(stringEqual(bindAddressWithAccount.get(_to), _account));
+    // throw if address was bind with another account
+    if(!stringEqual(bindAddressAccounts[_to], "")) {
+      require(stringEqual(bindAddressAccounts[_to], _account));
     }
+    // only one bind address account
+    if(bindAccountsAddress[_account] != 0x0) {
+      require(bindAccountsAddress[_account] == _to);      
+    }
+    // bind account with address
+    bindAccountsAddress[_account] = _to;
+    bindAddressAccounts[_to] = _account;
+    // mint tokens
     totalSupply = totalSupply.add(_amount);
     balances[_to] = balances[_to].add(_amount);
     Transfer(0x0, _to, _amount);
     return true;
   }
-  function mintWithOutAll() public pure {
+  function getBindAccountAddress(string _account) public constant returns (address) {
+      return bindAccountsAddress[_account];
   }
-  function mintWithParams(string _account) public {
-    getAmountTokensAccount(_account);
+  function getBindAddressAccount(address _accountAddress) public constant returns (string) {
+      return bindAddressAccounts[_accountAddress];
   }
-  function mintWithGetAmount() public {
-    getAmountTokensAccount('mmm');
-  }
-  function mintFinish() public  {
-    finishMinting();
-  }
-  function mintSupply(uint256 _amount) public  {
-    totalSupply = totalSupply.add(_amount);
-  }
-  function mintBalances(address _to, uint256 _amount) public  {
-    balances[_to] = balances[_to].add(_amount);
-  }
-  function mintBalancesAddress(address _to, uint256 _amount) public  {
-    balances[0x00C987c2605FDca03E752E66D69eA9AfE6DEf8cAC8] = balances[0x00C987c2605FDca03E752E66D69eA9AfE6DEf8cAC8].add(1000000000000000000);
-  }
-  function mintWithParamsAddress(address _to, uint256 _amount) public {
-    getAmountTokensAccount('mmm');
-  }
-  function stringEqual(string _a, string _b) internal pure returns (bool) {
-    return keccak256(_a) == keccak256(_b);
-  }
-  function getBindAddressWithAccount() onlyOwner public {
-    // get transfered account and addresses
-    for (uint i = 0; i < bindAddressWithAccount.size(); i++) {
-      GetAmountTokensAccountEvent(bindAddressWithAccount.getKeyByIndex(i), bindAddressWithAccount.getValueByIndex(i));
-    }
-  }
-  function getAmountTokensAccount(string _account) public constant returns (uint256) {
-    // get amount tokens account
-    uint256 amount = 0;
-    for (uint i = 0; i <  bindAddressWithAccount.size(); i++) {
-      if(stringEqual(bindAddressWithAccount.getValueByIndex(i), _account)) {
-        amount = amount.add(balanceOf(bindAddressWithAccount.getKeyByIndex(i)));
-      }
-    }
-    return amount;
+  function stringEqual(string a, string b) internal pure returns (bool) {
+    return keccak256(a) == keccak256(b);
   }
   /**
    * @dev Function to stop minting new tokens.
    * @return True if the operation was successful.
    */
-  function finishMinting() public returns (bool) {
+  function finishMinting() onlyOwner public returns (bool) {
     mintingFinished = true;
     return true;
   }
@@ -335,19 +259,16 @@ contract MintableToken is BurnableToken, Ownable {
     return true;
   }
 }
-contract HeartBoutEnToken is MintableToken {
+contract HeartBoutToken is MintableToken {
 	string public name;
 	string public symbol;
 	uint8 public decimals;
-	function HeartBoutEnToken(string _name, string _symbol, uint8 _decimals) public {
+	function HeartBoutToken(string _name, string _symbol, uint8 _decimals) public {
 		require(!stringEqual(_name, ""));
 		require(!stringEqual(_symbol, ""));
 		require(_decimals > 0);
 		name = _name;
 		symbol = _symbol;
 		decimals = _decimals;
-	}
-	function stringEqual(string a, string b) internal pure returns (bool) {
-		return keccak256(a) == keccak256(b);
 	}
 }
